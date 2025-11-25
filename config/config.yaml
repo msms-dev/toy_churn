@@ -1,0 +1,32 @@
+project_name: "toy_churn_example"
+
+paths:
+  data_dir: "data"
+  raw_dir: "data/raw"
+  interim_dir: "data/interim"
+  processed_dir: "data/processed"
+  models_dir: "models"
+  monitoring_reports_dir: "monitoring_reports"
+
+data:
+  raw_events_csv: "data/raw/events.csv"
+
+mlflow:
+  tracking_uri: "http://localhost:5000"
+  experiment_name: "toy_churn_experiment"
+  registered_model_name: "toy_churn_model"
+
+training:
+  test_size: 0.2
+  random_state: 42
+
+label_definition:
+  history_days: 30
+  churn_window_days: 7
+
+features:
+  numeric:
+    - events_7d
+    - events_30d
+    - days_active_30d
+    - days_since_last_event
