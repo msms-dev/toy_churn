@@ -12,16 +12,16 @@ data:
   raw_events_csv: "data/raw/events.csv"
 
 mlflow:
-  tracking_uri: "http://localhost:5000"
+  tracking_uri: "http://127.0.0.1:5000"
   experiment_name: "toy_churn_experiment"
   registered_model_name: "toy_churn_model"
 
 training:
   test_size: 0.2
-  random_state: 42
+  random_state: 69
 
 label_definition:
-  history_days: 30
+  history_days: 7
   churn_window_days: 7
 
 features:
