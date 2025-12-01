@@ -19,3 +19,8 @@ airflow.cfg
 # Parquet & data
 data/processed/
 data/raw/
+
+mlflow.db
+models/
+airflow-toy-churn/
+airflow/
