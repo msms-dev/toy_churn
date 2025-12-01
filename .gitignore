@@ -1,26 +1,29 @@
-# Python
+
 __pycache__/
 *.pyc
 
-# Virtual environment
+
 .venv/
 
-# MLflow
-mlruns/
 
-# Airflow
+mlruns/
+mlflow.db
+
+
 airflow-toy-churn/
 airflow.db
 airflow.cfg
+logs/
 
-# Mac metadata
+
 .DS_Store
 
-# Parquet & data
-data/processed/
-data/raw/
 
-mlflow.db
+data/raw/
+data/processed/
+data/interim/
+data/external/
+
+
 models/
-airflow-toy-churn/
-airflow/
+artifacts/
