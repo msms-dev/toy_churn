@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from pathlib import Path
+import os
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
@@ -21,8 +22,14 @@ def prepare_training_dataset(**context):
 
     processed_dir = Path(cfg["paths"]["processed_dir"])
     processed_dir.mkdir(parents=True, exist_ok=True)
+
     dataset_path = processed_dir / "training_dataset.parquet"
-    dataset.to_parquet(dataset_path)
+    tmp_path = processed_dir / "training_dataset_tmp.parquet"
+
+    # --- FIX FOR macOS/Docker parquet locking ---
+    dataset.to_parquet(tmp_path)
+    os.replace(tmp_path, dataset_path)
+    # --------------------------------------------
 
     ti = context["ti"]
     ti.xcom_push(key="training_dataset_path", value=str(dataset_path))

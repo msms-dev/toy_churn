@@ -1,0 +1,64 @@
+version: "3.9"
+
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  env_file: .env
+  working_dir: /opt/airflow
+  environment:
+    AIRFLOW_HOME: /opt/airflow
+    # Use our Postgres DB
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
+  depends_on:
+    - postgres
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./src:/opt/airflow/src
+    - ./config:/opt/airflow/config
+    - ./data:/opt/airflow/data
+    - airflow_logs:/opt/airflow/logs
+
+services:
+  # Postgres metadata DB for Airflow
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  # MLflow tracking + model registry
+  mlflow:
+    <<: *airflow-common
+    command: >
+      mlflow server
+      --backend-store-uri ${MLFLOW_BACKEND_URI}
+      --default-artifact-root ${MLFLOW_ARTIFACT_URI}
+      --host 0.0.0.0
+      --port 5000
+      --allowed-hosts '*'
+    volumes:
+      - mlflow_data:/mlflow
+      - ./src:/opt/airflow/src
+      - ./config:/opt/airflow/config
+      - ./data:/opt/airflow/data
+    ports:
+      - "5500:5000"
+
+  # Single Airflow service (UI + scheduler + triggerer + dag processor)
+  airflow:
+    <<: *airflow-common
+    command: airflow standalone
+    ports:
+      - "8080:8080"
+
+volumes:
+  postgres_data:
+  airflow_logs:
+  mlflow_data:

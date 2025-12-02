@@ -84,8 +84,17 @@ def predict_batch(
     else:
         output_path = Path(output_path)
 
+    # 🔻 NEW: more robust parquet write to avoid "Resource deadlock avoided"
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    out.to_parquet(output_path)
+
+    # If the file already exists, delete it first (helps with overlayfs weirdness)
+    if output_path.exists():
+        output_path.unlink()
+
+    # Explicitly open the file handle and let pandas write to it
+    with open(output_path, "wb") as f:
+        out.to_parquet(f)
+
     print(f"✅ Saved churn scores to: {output_path}")
     print(out.head())
 
