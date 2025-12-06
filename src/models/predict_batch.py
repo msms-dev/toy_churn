@@ -84,7 +84,7 @@ def predict_batch(
     else:
         output_path = Path(output_path)
 
-    # 🔻 NEW: more robust parquet write to avoid "Resource deadlock avoided"
+    #  NEW: more robust parquet write to avoid "Resource deadlock avoided"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # If the file already exists, delete it first (helps with overlayfs weirdness)

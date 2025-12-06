@@ -11,6 +11,16 @@ x-airflow-common: &airflow-common
     # Use our Postgres DB
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
+
+    # === BigQuery / GCP settings ===
+    # Path *inside* the container to the mounted service-account key
+    GOOGLE_APPLICATION_CREDENTIALS: /opt/airflow/keys/service_account.json
+    # Replace this with your actual GCP project id if different
+    GCP_PROJECT_ID: airflow-mlops-demo
+    # Public GA Merchandise Store sample in BigQuery
+    BQ_GA_TABLE: bigquery-public-data.google_analytics_sample.ga_sessions_*
+    # How many days of history to use for training
+    HISTORICAL_DAYS: "90"
   depends_on:
     - postgres
   volumes:
@@ -19,6 +29,9 @@ x-airflow-common: &airflow-common
     - ./config:/opt/airflow/config
     - ./data:/opt/airflow/data
     - airflow_logs:/opt/airflow/logs
+    # Mount the whole gcp directory
+    - ./gcp:/opt/airflow/keys
+
 
 services:
   # Postgres metadata DB for Airflow

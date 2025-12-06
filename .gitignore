@@ -83,3 +83,4 @@ Thumbs.db
 .ipynb_checkpoints/
 
 
+gcp/*.json
