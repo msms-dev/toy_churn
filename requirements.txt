@@ -20,4 +20,5 @@ pyyaml
 # GCP / BigQuery
 google-cloud-bigquery>=3.10.0
 google-auth>=2.20.0
+db-dtypes
 

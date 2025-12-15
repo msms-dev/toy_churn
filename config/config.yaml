@@ -1,32 +1,76 @@
 project_name: "toy_churn_example"
 
+# ---------------------------
+# PATHS
+# ---------------------------
 paths:
-  data_dir: "data"
-  raw_dir: "data/raw"
-  interim_dir: "data/interim"
-  processed_dir: "data/processed"
-  models_dir: "models"
-  monitoring_reports_dir: "monitoring_reports"
+  data_dir: "/opt/airflow/data"      # IMPORTANT: inside container path
+  raw_dir: "/opt/airflow/data/raw"
+  interim_dir: "/opt/airflow/data/interim"
+  processed_dir: "/opt/airflow/data/processed"
+  models_dir: "/opt/airflow/data/models"
+  monitoring_reports_dir: "/opt/airflow/data/monitoring"
+  scores_dir: "/opt/airflow/data/scores"   # needed for scoring DAG output
 
-data:
-  raw_events_csv: "data/raw/events.csv"
+# ---------------------------
+# BIGQUERY CONFIG
+# ---------------------------
+bigquery:
+  project_id: airflow-mlops-demo
+  ga_table: "bigquery-public-data.google_analytics_sample.ga_sessions_*"
+  historical_days: 90
 
+# ---------------------------
+# GA SIMULATION CONFIG
+# ---------------------------
+#ga_simulation:
+  #anchor_date: "2017-04-03"
+
+simulation:
+  # Real-world date you start the simulation (the first run). Keep as a date string.
+  sim_start_date: "2025-12-15"
+  ga_start_date: "2017-04-03"
+  ga_end_date: "2017-11-30"
+  training_step_days: 7   # weekly training
+  scoring_step_days: 1    # daily scoring
+  warmup_days: 90
+  mode: "growing"     
+
+
+# ---------------------------
+# MLflow Tracking
+# ---------------------------
 mlflow:
   tracking_uri: "http://mlflow:5000"
-  experiment_name: "toy_churn_experiment"
-  registered_model_name: "toy_churn_model"
+  experiment_name: "ga_churn_experiment"
+  registered_model_name: "ga_churn_model"
 
+# ---------------------------
+# TRAINING CONFIG
+# ---------------------------
 training:
   test_size: 0.2
-  random_state: 69
+  random_state: 42
 
+# ---------------------------
+# LABEL DEFINITION
+# (still needed for churn logic)
+# ---------------------------
 label_definition:
-  history_days: 7
-  churn_window_days: 7
+  history_days: 30      # may or may not be used now
+  churn_window_days: 30 # model label definition
 
+# ---------------------------
+# FEATURES (legacy, optional)
+# Keeping this block does not hurt.
+# ---------------------------
 features:
   numeric:
-    - events_7d
-    - events_30d
-    - days_active_30d
-    - days_since_last_event
+    - sessions
+    - total_pageviews
+    - total_time_on_site
+    - total_transactions
+    - total_revenue
+    - n_countries
+    - n_sources
+    - n_mediums

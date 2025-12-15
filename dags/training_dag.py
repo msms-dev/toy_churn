@@ -1,70 +1,107 @@
 from datetime import datetime, timedelta
 from pathlib import Path
-import os
 
 from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.providers.standard.operators.python import PythonOperator
+
+from src.ingestion.bigquery_loader import load_raw_events_from_bigquery
+from src.features.ga_features import prepare_training_dataset
+from src.models.automl_train import run_automl_training
+from src.utils.config_loader import load_config
+from src.utils.simulation import compute_simulated_ga_date
+from airflow.models import Variable
 
 
-def prepare_training_dataset(**context):
-    from src.utils.config_loader import load_config
-    from src.ingestion.api_client import load_raw_events
-    from src.labelling.build_labels import build_churn_labels
-    from src.features.build_features import build_features
-
+def load_bigquery_events(ds: str, **context):
     cfg = load_config()
-    history_days = cfg["label_definition"]["history_days"]
-    churn_window = cfg["label_definition"]["churn_window_days"]
+    sim = cfg["simulation"]
 
-    df_events = load_raw_events()
-    labels_df = build_churn_labels(df_events, history_days, churn_window)
-    dataset = build_features(df_events, labels_df, history_days)
+    historical_days = int(cfg["bigquery"]["historical_days"])  # keep if you still want it elsewhere
 
-    processed_dir = Path(cfg["paths"]["processed_dir"])
+    # Map "today" (Airflow ds) -> simulated GA day (moves 7 days per training run)
+    ga_day = compute_simulated_ga_date(
+        logical_ds=ds,
+        sim_start_date=sim["sim_start_date"],
+        ga_start_date=sim["ga_start_date"],
+        ga_end_date=sim["ga_end_date"],
+        step_days=int(sim["training_step_days"]),
+    )
+
+    warmup_days = int(sim["warmup_days"])
+    train_start = (datetime.strptime(sim["ga_start_date"], "%Y-%m-%d").date()
+                   - timedelta(days=warmup_days))
+    train_end = ga_day  # expanding end
+
+    print(f"[training] ds={ds} -> ga_day={ga_day} train_start={train_start} train_end={train_end}")
+
+    raw_df = load_raw_events_from_bigquery(
+        start_date=str(train_start),
+        end_date=str(train_end),
+        project_id=None,
+        table_pattern=None,
+    )
+
+    if raw_df.empty:
+        raise ValueError(f"No raw events returned for training window {train_start}..{train_end}")
+
+    processed_dir = Path(cfg["paths"]["data_dir"]) / "training_raw"
     processed_dir.mkdir(parents=True, exist_ok=True)
 
-    dataset_path = processed_dir / "training_dataset.parquet"
-    tmp_path = processed_dir / "training_dataset_tmp.parquet"
+    raw_path = processed_dir / f"raw_{ds}.parquet"
+    raw_df.to_parquet(raw_path)
 
-    # --- FIX FOR macOS/Docker parquet locking ---
-    dataset.to_parquet(tmp_path)
-    os.replace(tmp_path, dataset_path)
-    # --------------------------------------------
+    context["ti"].xcom_push(key="raw_path", value=str(raw_path))
+    context["ti"].xcom_push(key="ga_day", value=str(ga_day))
+    context["ti"].xcom_push(key="train_start", value=str(train_start))
+    context["ti"].xcom_push(key="train_end", value=str(train_end))
 
+def build_training_dataset(**context):
+    cfg = load_config()
     ti = context["ti"]
-    ti.xcom_push(key="training_dataset_path", value=str(dataset_path))
+    raw_path = ti.xcom_pull(task_ids="load_bigquery_events", key="raw_path")
+
+    import pandas as pd
+    raw_df = pd.read_parquet(raw_path)
+
+    X, y = prepare_training_dataset(raw_df)
+
+    out_dir = Path(cfg["paths"]["data_dir"]) / "training_processed"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    dataset_path = out_dir / "train_dataset.parquet"
+    df = X.copy()
+    df["label"] = y.values
+    df.to_parquet(dataset_path)
+
+    ti.xcom_push(key="dataset_path", value=str(dataset_path))
 
 
 def train_model(**context):
-    from src.models.automl_train import run_automl_training
-
     ti = context["ti"]
-    dataset_path = ti.xcom_pull(
-        key="training_dataset_path",
-        task_ids="prepare_training_dataset",
-    )
+    dataset_path = ti.xcom_pull(task_ids="build_training_dataset", key="dataset_path")
     run_automl_training(dataset_path)
 
 
-default_args = {
-    "owner": "mlops",
-    "depends_on_past": False,
-    "retries": 1,
-    "retry_delay": timedelta(minutes=5),
-}
+default_args = {"owner": "mlops", "retries": 1, "retry_delay": timedelta(minutes=3)}
 
 with DAG(
-    dag_id="toy_churn_training_dag",
-    default_args=default_args,
+    dag_id="ga_training_dag",
     schedule="@weekly",
-    start_date=datetime(2025, 1, 1),
+    start_date=datetime(2025, 12, 15),  # real-world sim start
     catchup=False,
-    tags=["toy_churn", "training"],
+    default_args=default_args,
+    tags=["training", "bigquery"],
 ) as dag:
 
-    t_prepare = PythonOperator(
-        task_id="prepare_training_dataset",
-        python_callable=prepare_training_dataset,
+    t_load = PythonOperator(
+        task_id="load_bigquery_events",
+        python_callable=load_bigquery_events,
+        op_kwargs={"ds": "{{ ds }}"},
+    )
+
+    t_build = PythonOperator(
+        task_id="build_training_dataset",
+        python_callable=build_training_dataset,
     )
 
     t_train = PythonOperator(
@@ -72,5 +109,4 @@ with DAG(
         python_callable=train_model,
     )
 
-    t_prepare >> t_train
-
+    t_load >> t_build >> t_train
